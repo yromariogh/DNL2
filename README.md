@@ -1,0 +1,1 @@
+Repository for the paper "Deep Learned Non-Linear Propagation Model Regularizer for Compressive Spectral Imaging"
