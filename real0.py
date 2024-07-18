@@ -1,50 +1,47 @@
 
 from absl import app, flags
 from absl.flags import FLAGS
-from real_functions import *
-from real_networks import *
+from real_functions import Transpose_CASSI, ForwardFunction, PSNR_Metric, PnP_proposed, parameter, Update_x, Update_x_0
+from real_networks import C0, C1, C2, C3, C4
 import mat73
 from scipy.sparse import csr_matrix, find
 
-# flags.DEFINE_string('path',r'H:/Mi unidad/HDSP/TESIS/DATA','Path to data before ARAD_2022/Medidas.... ')
-flags.DEFINE_string('sX',"1",'Scene 1 to 30.... ')
-flags.DEFINE_string('map',"15",'Mapping network and Y.... ')
-flags.DEFINE_string('sCA',"CA_ideal",'Path to data before ARAD_2022.... ')
-flags.DEFINE_float('l1',0.0, 'Importance of Mapping network .... ')
-flags.DEFINE_integer('global_i',100, 'Global iters of algorithm .... ')
-flags.DEFINE_integer('internal_i',60, 'Internal iters of network .... ')
-flags.DEFINE_boolean('show_plots',False, 'Show iter-recons .... ')
-flags.DEFINE_integer('freq',1000, 'Freq of saving .... ')
-flags.DEFINE_string('denoiser',"BM3D",'Path to data before ARAD_2022.... ')
-flags.DEFINE_boolean('all',False, 'Show iter-recons .... ')
-flags.DEFINE_string('gpu',"0",'Path to data before ARAD_2022.... ')
-flags.DEFINE_string('init',"Transpose",'Path to data before ARAD_2022.... ')
-flags.DEFINE_float('lr',1/50, 'Importance of Mapping network .... ')
-flags.DEFINE_boolean('interrupt',False, 'Show iter-recons .... ')
-flags.DEFINE_boolean('again',False, 'Show iter-recons .... ')
-flags.DEFINE_string('net',"C0",'Path to data before ARAD_2022.... ')
 
-flags.DEFINE_string('norm',"MinMax",'Transpose normalization.... ')
 
+flags.DEFINE_string('sX',"1",'Scene 1 to 30')
+flags.DEFINE_string('denoiser',"BM3D",'Denoiser used [BM3D, RF, UNet]')
+flags.DEFINE_float('l1',1.0,'Importance of Mapping network ')
+
+
+flags.DEFINE_string('map',"15",'Mapping network and Y')
+flags.DEFINE_string('sCA',"CA_ideal",'Filename of the Coded Aperture')
+flags.DEFINE_boolean('all',False,'Show iter-recons ')
+flags.DEFINE_string('init',"Transpose",'Initialization')
+flags.DEFINE_boolean('interrupt',False,'Stop if finished ')
+flags.DEFINE_boolean('again',False,'Run again ')
+
+
+flags.DEFINE_integer('global_i',100,'Global iters of algorithm ')
+flags.DEFINE_integer('internal_i',60,'Internal epochs of network ')
+flags.DEFINE_boolean('show_plots',False,'Show iter-recons ')
+flags.DEFINE_integer('freq',10,'Freq of saving ')
+flags.DEFINE_float('lr',1/50,'Reconstruction network learning rate ')
+flags.DEFINE_string('net',"C0",'Network used')
+flags.DEFINE_string('norm',"MinMax",'Transpose normalization')
 flags.DEFINE_string('PM',"D5",'Propagation model: [Simple,Hoover,Hans,D5,Song,Efficient,Kittle]')
-flags.DEFINE_string('PMv',"new",'Propagation version: [old,new] ')
+flags.DEFINE_string('PMv',"new",'Propagation version: [old,new]')
 
 def main(_argv):
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpu
     import tensorflow as tf
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
-        # Restrict TensorFlow to only use the first GPU
         try:
             tf.config.experimental.set_virtual_device_configuration(gpus[0],[tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024)])
             logical_gpus = tf.config.list_logical_devices('GPU')
             print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
         except RuntimeError as e:
-            # Visible devices must be set before GPUs have been initialized
             print(e)
-    # from sys import platform
-    # import math
     import numpy as np
     import scipy.io as sio
     data_path = os.getcwd()
@@ -68,10 +65,7 @@ def main(_argv):
             sCA = 'CA_ideal'
         elif PM in ['Hans']:
             sCA = 'CA_crop'
-    elif PMv == 'new':
-        sCA = 'H_from_'+PM
-
-    if PMv == 'old':
+        
         ca = np.array(sio.loadmat(os.path.join(data_path,'CA',sCA+'.mat'))['CA']);
         if ca.shape == (M, N):
             CA = np.zeros((M, N, L))
@@ -81,9 +75,13 @@ def main(_argv):
         else:
             CA = np.expand_dims(ca, axis=0)
         CA=(CA-np.min(CA))/(np.max(CA)-np.min(CA))
+
+        if PM == 'Simple':
+            info = 'CA_ideal'
+
     elif PMv == 'new':
-        # print('CA not found')
-        # # CA = sio.loadmat(os.path.join(data_path,'CA',sCA+'.mat'))['H'].toarray()
+        sCA = 'H_from_'+PM
+
         try:
             H = sio.loadmat(os.path.join(data_path,'CA',sCA+'.mat'))['H']
         except:
@@ -93,21 +91,16 @@ def main(_argv):
         except:
             Ht = mat73.loadmat(os.path.join(data_path,'CA',sCA.replace('H_','Ht_')+'.mat'))['Ht']
 
+        
+        info = 'H_from_'+PM
 
 
-    # print('sX: '+sX+' map: '+map+' sCA: '+sCA+' l1: '+str(l1)+' global_i: '+str(FLAGS.global_i)+' internal_i: '+str(FLAGS.internal_i)+' denoiser: '+FLAGS.denoiser+' all: '+str(FLAGS.all))
-    # print('sX: '+str(type(sX))+' map: '+str(type(map))+' sCA: '+str(type(sCA))+' l1: '+str(type(l1))+' global_i: '+str(type(FLAGS.global_i))+' internal_i: '+str(type(FLAGS.internal_i))+' denoiser: '+str(type(FLAGS.denoiser))+' all: '+str(type(FLAGS.all)))
     save_path = os.path.join(data_path, 'Results')
     listprev = []
 
-    if PMv == 'old' and PM == 'Simple':
-        info = 'CA_ideal'
-    else:
-        info = 'H_from_'+PM
 
     filename = ', '.join([sX,map,info,str(l1),str(FLAGS.global_i),str(FLAGS.internal_i),FLAGS.denoiser,str(FLAGS.all),str(lr),FLAGS.init,FLAGS.net])
     listdir = sorted(os.listdir(os.path.join(save_path,map)))
-    # print(listdir)
     for f in listdir:
         if f.startswith(filename) and f.endswith('.mat'):
             print(filename+' -> Already exists')
@@ -143,9 +136,6 @@ def main(_argv):
 
 
 
-
-
-    # print(type(init),init.shape,init.dtype)
     if FLAGS.init == "Transpose":
         init = Transpose_CASSI(Ht, y, norm, M,N,L, PMv)
         del(Ht)
@@ -161,9 +151,6 @@ def main(_argv):
             return
         else:
             init = np.squeeze(np.array(sio.loadmat(os.path.join(save_path,map,listprev[listprevPSNRs.index(max(listprevPSNRs))]))['best_im'])).astype(np.float64)
-        # print(type(init),init.shape,init.dtype)
-        # return
-
 
         
     if l1 != 0.0 or FLAGS.all == True:
@@ -178,8 +165,6 @@ def main(_argv):
             Mx_temp = C3(input_size=ydims)
         elif FLAGS.net == "C4":
             Mx_temp = C4(input_size=ydims)
-        elif FLAGS.net == "GAN":
-            Mx_temp = GAN(input_size=ydims)
         Mx_temp.load_weights(os.path.join(old_cp_dir,FLAGS.net+'.h5'))
 
         Mx = Mx_temp.predict(ForwardFunction(H_s, xg, M,N,L))
