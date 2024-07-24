@@ -202,7 +202,6 @@ def main(_argv):
             save_path = f'{self.save_path}.png'
             plt.savefig(save_path)
 
-            # Save all metrics in a .mat file with variable names of val_loss, val_PSNR, val_SSIM, val_MSE
             sio.savemat(f'{self.save_path}.mat', {metric: self.metric_history[metric] for metric in self.metrics})
             
 
@@ -245,57 +244,8 @@ def main(_argv):
     # elif FLAGS.lr_type=='lr_schedule':
     #     optimizad = tf.keras.optimizers.Adam(learning_rate=lr_schedule, amsgrad=False)  
 
-    # Callback to save every checkpoint with its value of a defined metric as filename
-
-    model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        filepath=new_cp_path,
-        save_weights_only=True,
-        verbose=1,
-        save_freq='epoch',
-        monitor='val_PSNR_Metric',
-        mode='max',
-        save_best_only=True)
-    
-    # class PrintLR(tf.keras.callbacks.Callback):
-    #     def on_epoch_end(self, epoch, logs=None):
-    #         learning_rate = model.optimizer.lr
-    #         if isinstance(learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule):
-    #             learning_rate = learning_rate(self.model.optimizer.iterations)
-    #         print('\nLearning rate for epoch {} is {}'.format(epoch + 1, learning_rate))
-    
-    # lr_callback = PrintLR()
-
     scheduler = LearningRateMultiplier(FLAGS.lr_steps, FLAGS.lr_rate)
     
-    #################################################################################################
-
-    # Callback to save every improvement of PSNR as a new checkpoint
-    class PSNRCheckpoint(tf.keras.callbacks.ModelCheckpoint):
-        def __init__(self, psnr_monitor, **kwargs):
-            super().__init__(**kwargs)
-            self.psnr_monitor = psnr_monitor
-
-        def on_epoch_end(self, epoch, logs=None):
-            psnr_value = logs.get(self.psnr_monitor)
-            if psnr_value is not None:
-                psnr_str = f"{psnr_value:.3f}"
-                filepath = self.filepath.format(epoch=epoch, psnr=psnr_str, **logs)
-                if os.path.dirname(filepath) != "":
-                    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-                self.model.save_weights(filepath, overwrite=True)
-
-    # Define the callback to save the model weights with PSNR value in the filename
-    psnr_checkpoint_callback = PSNRCheckpoint(
-        psnr_monitor='val_PSNR_Metric',
-        # filepath=old_cp_dir+'/epoch{epoch:02d}_valpsnr{val_PSNR_Metric:.3f}.h5',
-        filepath=old_cp_dir+'/'+FLAGS.net+'_{val_PSNR_Metric:.3f}.h5',
-        monitor='val_PSNR_Metric',
-        verbose=1,
-        save_best_only=True,
-        save_weights_only=True,
-        mode='max',
-        save_freq='epoch')
-
     #################################################################################################
 
     images=[Yout]
@@ -327,11 +277,6 @@ def main(_argv):
         model = C3(input_size=(IMG_HEIGHT,IMG_WIDTH,L_bands))
     elif FLAGS.net=='C4':
         model = C4(input_size=(IMG_HEIGHT,IMG_WIDTH,L_bands))
-    elif FLAGS.net=='GAN':
-        model = GAN(input_size=(IMG_HEIGHT,IMG_WIDTH,L_bands))
-
-    elif FLAGS.net=='C4k':
-        model = C4k(input_size=(IMG_HEIGHT,IMG_WIDTH,L_bands), l1=kl1, l2=kl2)
 
     if reTrain:
         print('Loading previous weights: ',old_cp_path)
@@ -344,9 +289,9 @@ def main(_argv):
         model.evaluate(test_ds)
     else:
         if FLAGS.all:
-            history = model.fit(train_ds, validation_data=test_ds, epochs=epochs, callbacks=[psnr_checkpoint_callback,scheduler,metrics_plot_callback])
+            history = model.fit(train_ds, validation_data=test_ds, epochs=epochs, callbacks=[scheduler,metrics_plot_callback])
         else:
-            history = model.fit(train_ds, validation_data=test_ds, epochs=epochs, callbacks=[model_checkpoint_callback,scheduler,metrics_plot_callback])
+            history = model.fit(train_ds, validation_data=test_ds, epochs=epochs, callbacks=[scheduler,metrics_plot_callback])
         last_psnr=history.history['PSNR_Metric'][-1]
         best_psnr=np.max(history.history['PSNR_Metric'])
         iter_psnr=history.history['PSNR_Metric'].index(best_psnr)
@@ -383,7 +328,6 @@ def main(_argv):
         # Show the plot (optional)
         # plt.show()
 
-        sio.savemat('Metrics, '+str(FLAGS.net)+', '+str(epochs)+', '+str(lr_info)+'.mat', {'val_loss':val_loss,'val_PSNR':val_PSNR,'val_SSIM':val_SSIM,'val_MSE':val_MSE})
         #model.save_weights("model_weights_norm_inpal1.h5")
 
 if __name__ == '__main__':
