@@ -31,8 +31,6 @@ flags.DEFINE_boolean('evaluate',False, 'Load and train .... ')
 flags.DEFINE_integer('epochs',1000, 'Training epochs .... ')
 flags.DEFINE_integer('batch',1, 'Training epochs .... ')
 flags.DEFINE_boolean('all',False, 'Ckpt .... ')
-flags.DEFINE_float('kl1',0, 'Importance of Mapping network .... ')
-flags.DEFINE_float('kl2',0, 'Importance of Mapping network .... ')
 flags.DEFINE_string('lr_type','lr', 'Learning rate .... ')
 flags.DEFINE_integer('lr_steps',1, 'Training epochs .... ')
 flags.DEFINE_float('lr_rate',1, 'Learning rate .... ')
@@ -53,9 +51,6 @@ def main(_argv):
 
     IMG_WIDTH = 134; IMG_HEIGHT = 128;
 
-    kl1 = FLAGS.kl1
-    kl2 = FLAGS.kl2
-
     epochs =  FLAGS.epochs # @param {type:"number"}
     reTrain = FLAGS.retrain # @param {type:"boolean"}
     lr = FLAGS.lr# @param {type:"raw"}
@@ -68,12 +63,8 @@ def main(_argv):
         lr_info = ''
     elif FLAGS.lr_type=='lr_schedule':
         lr_info = ', scheduler=('+str(lr)+','+str(FLAGS.lr_steps)+','+str(FLAGS.lr_rate)+')'
-    if 'k' in FLAGS.net:
-        old_cp_path = old_cp_dir+FLAGS.net+FLAGS.old+'_'+str(kl1)+'_'+str(kl2)+'.h5' # @param {type:"raw"}
-        new_cp_path = old_cp_dir+FLAGS.net+FLAGS.new+'_'+str(kl1)+'_'+str(kl2)+'.h5' # @param {type:"raw"}
-    else:
-        old_cp_path = old_cp_dir+FLAGS.net+'_'+FLAGS.old+lr_info+'.h5' # @param {type:"raw"}
-        new_cp_path = old_cp_dir+FLAGS.net+'_'+FLAGS.new+lr_info+'.h5' # @param {type:"raw"}
+    old_cp_path = old_cp_dir+FLAGS.net+'_'+FLAGS.old+lr_info+'.h5' # @param {type:"raw"}
+    new_cp_path = old_cp_dir+FLAGS.net+'_'+FLAGS.new+lr_info+'.h5' # @param {type:"raw"}
 
     
     
@@ -83,12 +74,6 @@ def main(_argv):
 
     def PSNR_Metric(y_true, y_pred):
         return tf.reduce_mean(tf.image.psnr(y_true,y_pred,tf.reduce_max(y_true)))
-    
-    # def sk_SSIM_Metric(y_true, y_pred):
-    #     y_true_np = y_true.numpy()
-    #     y_pred_np = y_pred.numpy()
-    #     ssim_value, _ = SSIM(y_true_np,y_pred_np,full=True)
-    #     return ssim_value
     
     def tf_SSIM_Metric(y_true, y_pred):
         return tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=tf.reduce_max(y_true),filter_size=1))
@@ -111,8 +96,6 @@ def main(_argv):
         data_path = data_path.decode('utf8')
         Yn = data_path.split('\\')[-1]+'_'
         print(Yn)
-        # list_imgs = os.listdir(data_path.decode('utf8'))
-        # list_imgs = [ x.replace(".mat",'') for x in list_imgs if ".mat" in x ]
         if 'Train' in data_path:
             list_imgs = [Yn+str(i) for i in [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 27, 29, 30]]
         elif 'Test' in data_path:
@@ -133,8 +116,6 @@ def main(_argv):
                 if any(str_i.decode('utf8') in img_fn for str_i in images):
                     input = loadmat(path_in+'/'+img_fn.replace(name,Yin)+'.mat')[Yin]
                     output = loadmat(path_out+'/'+img_fn+'.mat')[name]
-                    # input = (input-np.min(input)) / (np.max(input)-np.min(input))
-                    # output = (output-np.min(output)) / (np.max(output)-np.min(output))
                     yield input, output
 
         def __new__(cls, path_in, path_out, images, name, input_size=(128, 134)):
